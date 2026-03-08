@@ -8,17 +8,40 @@ const {
   ActivityType,
 } = require('discord.js');
 
-const MESSAGE_FLAGS_IS_COMPONENTS_V2 = 32768;
-
-const TOKEN = process.env.DISCORD_TOKEN;
-if (!TOKEN) {
-  console.error('DISCORD_TOKEN is missing. Set it in your environment before running the bot.');
-  process.exit(1);
-}
-
-const PREFIX = '$';
+const CONFIG_FILE = path.join(__dirname, 'config.json');
 const DATA_DIR = path.join(__dirname, 'data');
 const DATA_FILE = path.join(DATA_DIR, 'db.json');
+
+function loadConfig() {
+  if (!fs.existsSync(CONFIG_FILE)) {
+    console.error('config.json is missing. Please create it before running the bot.');
+    process.exit(1);
+  }
+
+  const raw = fs.readFileSync(CONFIG_FILE, 'utf8');
+  const parsed = JSON.parse(raw);
+
+  parsed.prefix = parsed.prefix || '$';
+  parsed.reviewUrl =
+    parsed.reviewUrl || 'https://discord.com/channels/1289528496040841226/1477365596482961478';
+  parsed.dmImageUrl =
+    parsed.dmImageUrl ||
+    'https://cdn.discordapp.com/attachments/1466468379857522840/1476349354284552444/New_Project.png?ex=69a0ccfb&is=699f7b7b&hm=10dbd30eae549e613d9f7a8e1f76142a83628ff08691e7c6aa58526190dba881&';
+
+  parsed.presence = parsed.presence || {};
+  parsed.presence.status = parsed.presence.status || 'idle';
+  parsed.presence.type = (parsed.presence.type || 'WATCHING').toUpperCase();
+  parsed.presence.name = parsed.presence.name || 'Abdo Càfe';
+
+  return parsed;
+}
+
+const config = loadConfig();
+const TOKEN = process.env.DISCORD_TOKEN || config.token;
+if (!TOKEN || TOKEN === 'PUT_YOUR_BOT_TOKEN_HERE') {
+  console.error('Bot token is missing. Put it in config.json (token) or DISCORD_TOKEN env var.');
+  process.exit(1);
+}
 
 function ensureDataFile() {
   if (!fs.existsSync(DATA_DIR)) {
@@ -100,58 +123,48 @@ async function resolveRole(guild, roleRaw) {
   return guild.roles.cache.find((r) => r.name.toLowerCase() === lower) || null;
 }
 
+function getActivityType(type) {
+  switch (type) {
+    case 'PLAYING':
+      return ActivityType.Playing;
+    case 'LISTENING':
+      return ActivityType.Listening;
+    case 'COMPETING':
+      return ActivityType.Competing;
+    case 'STREAMING':
+      return ActivityType.Streaming;
+    default:
+      return ActivityType.Watching;
+  }
+}
+
+async function sendDmWithImage(member, text) {
+  await member.send(text);
+  await member.send(config.dmImageUrl);
+}
+
 async function notifyNewPoint(member, totalPoints) {
-  await member.send({
-    flags: MESSAGE_FLAGS_IS_COMPONENTS_V2,
-    components: [
-      {
-        type: 17,
-        components: [
-          {
-            type: 10,
-            content: '> <:ar7ab:1479312018782683188>  لقد حصلت على نقطة جديدة 1',
-          },
-          {
-            type: 10,
-            content: `> ** <a:Flower:1477375556789211212>  إجمالي عدد نقاطك ${totalPoints}**`,
-          },
-          {
-            type: 10,
-            content: 'لا تنسَ تقييمنا هنا https://discord.com/channels/1289528496040841226/1477365596482961478',
-          },
-        ],
-      },
-    ],
-  });
+  const message = [
+    '> <:ar7ab:1479312018782683188>  لقد حصلت على نقطة جديدة 1',
+    '',
+    `> ** <a:Flower:1477375556789211212>  إجمالي عدد نقاطك ${totalPoints}**`,
+    `لا تنسَ تقييمنا هنا ${config.reviewUrl}`,
+  ].join('\n');
+
+  await sendDmWithImage(member, message);
 }
 
 async function notifyRoleGranted(member, roleName) {
-  await member.send({
-    flags: MESSAGE_FLAGS_IS_COMPONENTS_V2,
-    components: [
-      {
-        type: 17,
-        components: [
-          {
-            type: 10,
-            content: '**شكرا لاختيارك Abdo Càfe**',
-          },
-          {
-            type: 10,
-            content: '> **نتمنى لك ان تكون الخدمة قد  اعجبتك.**',
-          },
-          {
-            type: 10,
-            content: '> **لا تنسا أن تضع  رأيك هنا: https://discord.com/channels/1289528496040841226/1477365596482961478  **',
-          },
-          {
-            type: 10,
-            content: `**تم منحك رتبه : ${roleName}**`,
-          },
-        ],
-      },
-    ],
-  });
+  const message = [
+    '**شكرا لاختيارك Abdo Càfe**',
+    '',
+    '> **نتمنى لك ان تكون الخدمة قد  اعجبتك.**',
+    `> **لا تنسا أن تضع  رأيك هنا: ${config.reviewUrl}  **`,
+    '',
+    `**تم منحك رتبه : ${roleName}**`,
+  ].join('\n');
+
+  await sendDmWithImage(member, message);
 }
 
 async function grantEligibleRoles(member, db) {
@@ -191,11 +204,11 @@ const client = new Client({
 
 client.on('ready', () => {
   client.user.setPresence({
-    status: 'idle',
+    status: config.presence.status,
     activities: [
       {
-        name: 'Abdo Càfe',
-        type: ActivityType.Watching,
+        name: config.presence.name,
+        type: getActivityType(config.presence.type),
       },
     ],
   });
@@ -205,12 +218,12 @@ client.on('ready', () => {
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
-  if (!message.content.startsWith(PREFIX)) return;
+  if (!message.content.startsWith(config.prefix)) return;
 
   const [command] = message.content.trim().split(/\s+/);
   const base = command.toLowerCase();
 
-  if (base === '$tam') {
+  if (base === `${config.prefix}tam`) {
     if (!hasAdmin(message.member)) {
       await message.reply('هذا الأمر متاح فقط لمن لديه صلاحية Administrator.');
       return;
@@ -219,7 +232,7 @@ client.on('messageCreate', async (message) => {
     const arg = message.content.trim().split(/\s+/)[1];
     const target = await resolveMember(message.guild, arg);
     if (!target) {
-      await message.reply('الاستخدام الصحيح: `$tam <user>` (منشن أو آيدي).');
+      await message.reply(`الاستخدام الصحيح: \`${config.prefix}tam <user>\` (منشن أو آيدي).`);
       return;
     }
 
@@ -239,7 +252,7 @@ client.on('messageCreate', async (message) => {
     return;
   }
 
-  if (base === '$rotba') {
+  if (base === `${config.prefix}rotba`) {
     if (!hasAdmin(message.member)) {
       await message.reply('هذا الأمر متاح فقط لمن لديه صلاحية Administrator.');
       return;
@@ -247,7 +260,7 @@ client.on('messageCreate', async (message) => {
 
     const parsed = parseRotbaArgs(message.content);
     if (!parsed) {
-      await message.reply('الاستخدام الصحيح: `$rotba <role> <عدد النقاط>`');
+      await message.reply(`الاستخدام الصحيح: \`${config.prefix}rotba <role> <عدد النقاط>\``);
       return;
     }
 

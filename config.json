@@ -1,0 +1,11 @@
+{
+  "token": "PUT_YOUR_BOT_TOKEN_HERE",
+  "prefix": "$",
+  "reviewUrl": "https://discord.com/channels/1289528496040841226/1477365596482961478",
+  "dmImageUrl": "https://cdn.discordapp.com/attachments/1466468379857522840/1476349354284552444/New_Project.png?ex=69a0ccfb&is=699f7b7b&hm=10dbd30eae549e613d9f7a8e1f76142a83628ff08691e7c6aa58526190dba881&",
+  "presence": {
+    "status": "idle",
+    "type": "WATCHING",
+    "name": "Abdo Càfe"
+  }
+}
