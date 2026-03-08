@@ -223,6 +223,25 @@ client.on('messageCreate', async (message) => {
   const [command] = message.content.trim().split(/\s+/);
   const base = command.toLowerCase();
 
+
+  if (base === `${config.prefix}points`) {
+    const arg = message.content.trim().split(/\s+/)[1];
+    let target = message.member;
+
+    if (arg) {
+      target = await resolveMember(message.guild, arg);
+      if (!target) {
+        await message.reply(`الاستخدام الصحيح: \`${config.prefix}points [user]\` (منشن أو آيدي).`);
+        return;
+      }
+    }
+
+    const db = loadDb();
+    const totalPoints = db.points[target.id] || 0;
+    await message.reply(`عدد نقاط ${target}: **${totalPoints}**`);
+    return;
+  }
+
   if (base === `${config.prefix}tam`) {
     if (!hasAdmin(message.member)) {
       await message.reply('هذا الأمر متاح فقط لمن لديه صلاحية Administrator.');
