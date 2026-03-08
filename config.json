@@ -7,5 +7,7 @@
     "status": "idle",
     "type": "WATCHING",
     "name": "Abdo Càfe"
-  }
+  },
+  "topRefreshHours": 3,
+  "topChannelId": ""
 }

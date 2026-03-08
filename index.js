@@ -33,10 +33,18 @@ function loadConfig() {
   parsed.presence.type = (parsed.presence.type || 'WATCHING').toUpperCase();
   parsed.presence.name = parsed.presence.name || 'Abdo Càfe';
 
+  parsed.topRefreshHours = Number(parsed.topRefreshHours || 3);
+  if (!Number.isFinite(parsed.topRefreshHours) || parsed.topRefreshHours <= 0) {
+    parsed.topRefreshHours = 3;
+  }
+  parsed.topChannelId = parsed.topChannelId || '';
+
   return parsed;
 }
 
 const config = loadConfig();
+const TOP_REFRESH_MS = config.topRefreshHours * 60 * 60 * 1000;
+
 const TOKEN = process.env.DISCORD_TOKEN || config.token;
 if (!TOKEN || TOKEN === 'PUT_YOUR_BOT_TOKEN_HERE') {
   console.error('Bot token is missing. Put it in config.json (token) or DISCORD_TOKEN env var.');
@@ -49,7 +57,7 @@ function ensureDataFile() {
   }
 
   if (!fs.existsSync(DATA_FILE)) {
-    const initial = { points: {}, roleThresholds: {} };
+    const initial = { points: {}, roleThresholds: {}, topLive: {} };
     fs.writeFileSync(DATA_FILE, JSON.stringify(initial, null, 2), 'utf8');
   }
 }
@@ -61,6 +69,7 @@ function loadDb() {
 
   parsed.points = parsed.points || {};
   parsed.roleThresholds = parsed.roleThresholds || {};
+  parsed.topLive = parsed.topLive || {};
 
   return parsed;
 }
@@ -138,6 +147,68 @@ function getActivityType(type) {
   }
 }
 
+function formatTopText(db) {
+  const top = Object.entries(db.points)
+    .map(([userId, points]) => ({ userId, points: Number(points) }))
+    .filter((item) => Number.isFinite(item.points) && item.points > 0)
+    .sort((a, b) => b.points - a.points)
+    .slice(0, 10);
+
+  if (top.length === 0) {
+    return '🏆 **Top 10 Points**\n\nلا يوجد نقاط حالياً.';
+  }
+
+  const lines = top.map((item, index) => `**${index + 1}.** <@${item.userId}> — **${item.points}** نقطة`);
+  return ['🏆 **Top 10 Points (Live)**', '', ...lines].join('\n');
+}
+
+async function refreshTopLiveMessage(guild, forceChannelId = null) {
+  const db = loadDb();
+  db.topLive = db.topLive || {};
+
+  const channelId = forceChannelId || db.topLive.channelId || config.topChannelId;
+  if (!channelId) return;
+
+  let channel;
+  try {
+    channel = await guild.channels.fetch(channelId);
+  } catch {
+    return;
+  }
+
+  if (!channel || !channel.isTextBased()) return;
+
+  const content = `${formatTopText(db)}\n\nآخر تحديث: <t:${Math.floor(Date.now() / 1000)}:R>`;
+
+  let leaderboardMessage = null;
+  if (db.topLive.messageId) {
+    leaderboardMessage = await channel.messages.fetch(db.topLive.messageId).catch(() => null);
+  }
+
+  if (leaderboardMessage) {
+    await leaderboardMessage.edit({ content });
+  } else {
+    leaderboardMessage = await channel.send({ content });
+  }
+
+  db.topLive.channelId = channel.id;
+  db.topLive.messageId = leaderboardMessage.id;
+  db.topLive.lastUpdatedAt = new Date().toISOString();
+  saveDb(db);
+}
+
+function startTopLiveLoop() {
+  setInterval(async () => {
+    for (const guild of client.guilds.cache.values()) {
+      try {
+        await refreshTopLiveMessage(guild);
+      } catch (error) {
+        console.error(`Top live refresh failed for guild ${guild.id}:`, error.message);
+      }
+    }
+  }, TOP_REFRESH_MS);
+}
+
 async function sendDmWithImage(member, text) {
   await member.send(text);
   await member.send(config.dmImageUrl);
@@ -202,7 +273,7 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
-client.on('ready', () => {
+client.on('ready', async () => {
   client.user.setPresence({
     status: config.presence.status,
     activities: [
@@ -212,6 +283,16 @@ client.on('ready', () => {
       },
     ],
   });
+
+  startTopLiveLoop();
+
+  for (const guild of client.guilds.cache.values()) {
+    try {
+      await refreshTopLiveMessage(guild);
+    } catch (error) {
+      console.error(`Initial top live setup failed for guild ${guild.id}:`, error.message);
+    }
+  }
 
   console.log(`Logged in as ${client.user.tag}`);
 });
@@ -223,6 +304,18 @@ client.on('messageCreate', async (message) => {
   const [command] = message.content.trim().split(/\s+/);
   const base = command.toLowerCase();
 
+  if (base === `${config.prefix}top`) {
+    const db = loadDb();
+    await message.reply(formatTopText(db));
+
+    try {
+      await refreshTopLiveMessage(message.guild, message.channel.id);
+    } catch {
+      // ignore live refresh failures for command flow
+    }
+
+    return;
+  }
 
   if (base === `${config.prefix}points`) {
     const arg = message.content.trim().split(/\s+/)[1];
@@ -268,6 +361,7 @@ client.on('messageCreate', async (message) => {
     }
 
     await grantEligibleRoles(target, db);
+    await refreshTopLiveMessage(message.guild);
     return;
   }
 
