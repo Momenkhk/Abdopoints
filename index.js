@@ -132,6 +132,18 @@ async function resolveRole(guild, roleRaw) {
   return guild.roles.cache.find((r) => r.name.toLowerCase() === lower) || null;
 }
 
+function formatNumber(value) {
+  return new Intl.NumberFormat('en-US').format(value);
+}
+
+function calculateTaxBreakdown(amount) {
+  const tax = Math.ceil(amount * 0.05);
+  const net = amount - tax;
+  const transferAmount = Math.ceil(amount / 0.95);
+
+  return { tax, net, transferAmount };
+}
+
 function getActivityType(type) {
   switch (type) {
     case 'PLAYING':
@@ -314,6 +326,28 @@ client.on('messageCreate', async (message) => {
       // ignore live refresh failures for command flow
     }
 
+    return;
+  }
+
+  if (base === `${config.prefix}tax`) {
+    const amountArg = message.content.trim().split(/\s+/)[1];
+    const amount = Number(amountArg);
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      await message.reply(`الاستخدام الصحيح: \`${config.prefix}tax <amount>\``);
+      return;
+    }
+
+    const normalizedAmount = Math.floor(amount);
+    const { tax, net, transferAmount } = calculateTaxBreakdown(normalizedAmount);
+
+    await message.reply([
+      `🪙 **ضريبة مبلغ ${formatNumber(normalizedAmount)}**`,
+      '',
+      `• 💳 كم بيسحب منك البوت: **${formatNumber(tax)}**`,
+      `• 💵 كم بيتوصل إلى شخص: **${formatNumber(net)}**`,
+      `• 💰 كم لازم تحول عشان يوصل المبلغ بالضبط: **${formatNumber(transferAmount)}**`,
+    ].join('\n'));
     return;
   }
 
