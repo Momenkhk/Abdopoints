@@ -337,10 +337,26 @@ client.on('ready', async () => {
 
 client.on('messageCreate', async (message) => {
   if (message.author.bot || !message.guild) return;
-  if (!message.content.startsWith(config.prefix)) return;
 
-  const [command] = message.content.trim().split(/\s+/);
+  const trimmedContent = message.content.trim();
+  const [command] = trimmedContent.split(/\s+/);
   const base = command.toLowerCase();
+
+  if (base === 'حول') {
+    const amountArg = trimmedContent.split(/\s+/)[1];
+    const normalizedAmount = parseAmountInput(amountArg);
+
+    if (!normalizedAmount) {
+      await message.reply('الاستخدام الصحيح: `حول <amount>` مثل: `حول 5m` أو `حول 60M`.');
+      return;
+    }
+
+    const { transferAmount } = calculateTaxBreakdown(normalizedAmount);
+    await message.reply('`#credit 1351891381983121512 ' + transferAmount + '`');
+    return;
+  }
+
+  if (!trimmedContent.startsWith(config.prefix)) return;
 
   if (base === `${config.prefix}top`) {
     const db = loadDb();
