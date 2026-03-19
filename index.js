@@ -132,6 +132,44 @@ async function resolveRole(guild, roleRaw) {
   return guild.roles.cache.find((r) => r.name.toLowerCase() === lower) || null;
 }
 
+function formatNumber(value) {
+  return new Intl.NumberFormat('en-US').format(value);
+}
+
+function parseAmountInput(input) {
+  if (!input) return null;
+
+  const normalized = input.trim().toLowerCase().replace(/,/g, '');
+  const match = normalized.match(/^(\d+(?:\.\d+)?)([a-z]*)$/);
+  if (!match) return null;
+
+  const value = Number(match[1]);
+  if (!Number.isFinite(value) || value <= 0) return null;
+
+  const multipliers = {
+    k: 1_000,
+    m: 1_000_000,
+    b: 1_000_000_000,
+    t: 1_000_000_000_000,
+    q: 1_000_000_000_000_000,
+    qa: 1_000_000_000_000_000,
+  };
+
+  const suffix = match[2];
+  if (suffix && !multipliers[suffix]) return null;
+
+  const amount = Math.floor(value * (multipliers[suffix] || 1));
+  return amount > 0 ? amount : null;
+}
+
+function calculateTaxBreakdown(amount) {
+  const tax = Math.ceil(amount * 0.05);
+  const net = amount - tax;
+  const transferAmount = Math.ceil(amount / 0.95);
+
+  return { tax, net, transferAmount };
+}
+
 function getActivityType(type) {
   switch (type) {
     case 'PLAYING':
@@ -314,6 +352,27 @@ client.on('messageCreate', async (message) => {
       // ignore live refresh failures for command flow
     }
 
+    return;
+  }
+
+  if (base === `${config.prefix}tax`) {
+    const amountArg = message.content.trim().split(/\s+/)[1];
+    const normalizedAmount = parseAmountInput(amountArg);
+
+    if (!normalizedAmount) {
+      await message.reply(`الاستخدام الصحيح: \`${config.prefix}tax <amount>\` مثل: \`${config.prefix}tax 1000\` أو \`${config.prefix}tax 1k\` أو \`${config.prefix}tax 1.5m\`.`);
+      return;
+    }
+
+    const { tax, net, transferAmount } = calculateTaxBreakdown(normalizedAmount);
+
+    await message.reply([
+      `🪙 **ضريبة مبلغ ${formatNumber(normalizedAmount)}**`,
+      '',
+      `• 💳 كم بيسحب منك البوت: **${formatNumber(tax)}**`,
+      `• 💵 كم بيتوصل إلى شخص: **${formatNumber(net)}**`,
+      `• 💰 كم لازم تحول عشان يوصل المبلغ بالضبط: **${formatNumber(transferAmount)}**`,
+    ].join('\n'));
     return;
   }
 
