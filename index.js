@@ -367,11 +367,11 @@ client.on('messageCreate', async (message) => {
     const { tax, net, transferAmount } = calculateTaxBreakdown(normalizedAmount);
 
     await message.reply([
-      `🪙 **ضريبة مبلغ ${formatNumber(normalizedAmount)}**`,
+      '🪙 **ضريبة مبلغ `' + formatNumber(normalizedAmount) + '`**',
       '',
-      `• 💳 كم بيسحب منك البوت: **${formatNumber(tax)}**`,
-      `• 💵 كم بيتوصل إلى شخص: **${formatNumber(net)}**`,
-      `• 💰 كم لازم تحول عشان يوصل المبلغ بالضبط: **${formatNumber(transferAmount)}**`,
+      '• 💳 كم بيسحب منك البوت: `' + tax + '` (`' + formatNumber(tax) + '`)',
+      '• 💵 كم بيتوصل إلى شخص: `' + net + '` (`' + formatNumber(net) + '`)',
+      '• 💰 كم لازم تحول عشان يوصل المبلغ بالضبط: `' + transferAmount + '` (`' + formatNumber(transferAmount) + '`)',
     ].join('\n'));
     return;
   }
